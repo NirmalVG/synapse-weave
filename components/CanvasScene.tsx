@@ -117,7 +117,7 @@ export default function CanvasScene() {
 
           {/* Post-Processing Pipeline 
               multisampling={0} is critical for transparent backgrounds on iOS/Mobile Safari */}
-          <EffectComposer disableNormalPass multisampling={0}>
+          <EffectComposer enableNormalPass={false} multisampling={0}>
             <Bloom
               luminanceThreshold={0.1}
               mipmapBlur
