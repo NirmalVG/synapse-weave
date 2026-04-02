@@ -52,7 +52,7 @@ export const useSynapseStore = create<SynapseState>((set) => ({
   nodeScale: 1.0,
   setNodeScale: (scale) => set({ nodeScale: scale }),
 
-  smoothingFactor: 0.25,
+  smoothingFactor: 0.18,
   setSmoothingFactor: (factor) => set({ smoothingFactor: factor }),
 
   trackingConfidence: 0.7,

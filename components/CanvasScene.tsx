@@ -21,6 +21,7 @@ type HandLandmark = {
 }
 
 type HandLandmarks = HandLandmark[]
+type TrackedHands = [HandLandmarks | null, HandLandmarks | null]
 
 // --- INVISIBLE OPTIMIZATION COMPONENT ---
 // This runs purely inside the WebGL render loop (60 FPS).
@@ -31,20 +32,13 @@ function HandDataDistributor({
   leftRef,
   rightRef,
 }: {
-  sourceRef: React.MutableRefObject<HandLandmarks[]>
+  sourceRef: React.MutableRefObject<TrackedHands>
   leftRef: React.MutableRefObject<HandLandmarks | null>
   rightRef: React.MutableRefObject<HandLandmarks | null>
 }) {
   useFrame(() => {
-    if (sourceRef.current.length > 0) {
-      // Assuming first hand detected is right, second is left
-      rightRef.current = sourceRef.current[0]
-      leftRef.current =
-        sourceRef.current.length > 1 ? sourceRef.current[1] : null
-    } else {
-      rightRef.current = null
-      leftRef.current = null
-    }
+    rightRef.current = sourceRef.current[0]
+    leftRef.current = sourceRef.current[1]
   })
   return null
 }

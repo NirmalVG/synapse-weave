@@ -24,10 +24,18 @@ interface SynapseWebProps {
 }
 
 // Maximum distance between hands before the digital web snaps
-const BREAK_THRESHOLD = 3.5
+const CONNECT_THRESHOLD = 3.35
+const DISCONNECT_THRESHOLD = 3.8
+const WEB_HOLD_MS = 180
 
 export function SynapseWeb({ leftHandRef, rightHandRef }: SynapseWebProps) {
   const linesRef = useRef<THREE.LineSegments>(null)
+  const lastVisiblePairRef = useRef<{
+    left: HandLandmarks
+    right: HandLandmarks
+  } | null>(null)
+  const lastSeenAtRef = useRef(0)
+  const webActiveRef = useRef(false)
 
   // Subscribing to UI State
   const systemChroma = useSynapseStore((state) => state.systemChroma)
@@ -46,11 +54,34 @@ export function SynapseWeb({ leftHandRef, rightHandRef }: SynapseWebProps) {
   }, [])
 
   useFrame(({ viewport }) => {
-    const left = leftHandRef.current
-    const right = rightHandRef.current
+    const liveLeft = leftHandRef.current
+    const liveRight = rightHandRef.current
+    const now = performance.now()
+
+    if (liveLeft && liveRight) {
+      lastVisiblePairRef.current = {
+        left: liveLeft,
+        right: liveRight,
+      }
+      lastSeenAtRef.current = now
+    }
+
+    const shouldHoldPreviousPair =
+      (!liveLeft || !liveRight) &&
+      now - lastSeenAtRef.current <= WEB_HOLD_MS &&
+      lastVisiblePairRef.current
+    const left = liveLeft ?? lastVisiblePairRef.current?.left ?? null
+    const right = liveRight ?? lastVisiblePairRef.current?.right ?? null
 
     // If we don't have both hands, hide the web and exit early
-    if (!left || !right || !linesRef.current) {
+    if (
+      !left ||
+      !right ||
+      !linesRef.current ||
+      (!liveLeft && !liveRight && !shouldHoldPreviousPair)
+    ) {
+      lastVisiblePairRef.current = null
+      webActiveRef.current = false
       if (linesRef.current) linesRef.current.visible = false
       return
     }
@@ -87,8 +118,13 @@ export function SynapseWeb({ leftHandRef, rightHandRef }: SynapseWebProps) {
           -rPoint.z * 10,
         )
 
-        // Only draw the web segment if hands are within the threshold
-        if (lVector.distanceTo(rVector) < BREAK_THRESHOLD) {
+        const distance = lVector.distanceTo(rVector)
+        const threshold = webActiveRef.current
+          ? DISCONNECT_THRESHOLD
+          : CONNECT_THRESHOLD
+
+        // Hysteresis prevents the web from chattering when distance sits near the edge.
+        if (distance < threshold) {
           // Add Left Point (x, y, z)
           positions[arrayIdx++] = lVector.x
           positions[arrayIdx++] = lVector.y
@@ -110,7 +146,8 @@ export function SynapseWeb({ leftHandRef, rightHandRef }: SynapseWebProps) {
     }
 
     // Update the geometry
-    linesRef.current.visible = lineCount > 0
+    webActiveRef.current = lineCount > 0
+    linesRef.current.visible = webActiveRef.current
 
     // Crucial: Only tell the GPU to draw the number of lines currently active
     linesRef.current.geometry.setDrawRange(0, lineCount * 2)

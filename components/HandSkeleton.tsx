@@ -13,6 +13,7 @@ type HandLandmark = {
 }
 
 type HandLandmarks = HandLandmark[]
+const TRACKING_HOLD_MS = 160
 
 interface HandSkeletonProps {
   landmarksRef: React.MutableRefObject<HandLandmarks | null>
@@ -26,6 +27,8 @@ const dummy = new THREE.Object3D()
 export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const linesRef = useRef<THREE.LineSegments>(null)
+  const lastVisibleLandmarksRef = useRef<HandLandmarks | null>(null)
+  const lastSeenAtRef = useRef(0)
 
   // Pre-allocate geometry for the skeleton bones
   // 21 connections * 2 points per connection * 3 coordinates (x,y,z)
@@ -37,10 +40,28 @@ export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
   }, [])
 
   useFrame(({ viewport }) => {
-    const landmarks = landmarksRef.current
+    const liveLandmarks = landmarksRef.current
+    const now = performance.now()
+
+    if (liveLandmarks) {
+      lastVisibleLandmarksRef.current = liveLandmarks
+      lastSeenAtRef.current = now
+    }
+
+    const shouldHoldPreviousFrame =
+      !liveLandmarks &&
+      now - lastSeenAtRef.current <= TRACKING_HOLD_MS &&
+      lastVisibleLandmarksRef.current
+    const landmarks = liveLandmarks ?? lastVisibleLandmarksRef.current
 
     // If tracking is lost, hide the geometry
-    if (!landmarks || !meshRef.current || !linesRef.current) {
+    if (
+      !landmarks ||
+      !meshRef.current ||
+      !linesRef.current ||
+      (!liveLandmarks && !shouldHoldPreviousFrame)
+    ) {
+      lastVisibleLandmarksRef.current = null
       if (meshRef.current) meshRef.current.count = 0
       if (linesRef.current) linesRef.current.visible = false
       return
@@ -69,6 +90,7 @@ export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
       meshRef.current!.setMatrixAt(i, dummy.matrix)
     })
     meshRef.current.instanceMatrix.needsUpdate = true
+    meshRef.current.visible = true
 
     // 2. Update the Lines (Bones)
     linesRef.current.visible = true
