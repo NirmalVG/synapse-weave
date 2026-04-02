@@ -6,13 +6,21 @@ import * as THREE from "three"
 import { useSynapseStore } from "@/store/useSynapseStore"
 import { FINGERTIP_INDICES } from "@/utils/hand-geometry"
 
+type HandLandmark = {
+  x: number
+  y: number
+  z: number
+}
+
+type HandLandmarks = HandLandmark[]
+
 // Additional index maps for the different Binding Protocols
 const PALM_INDICES = [0, 5, 9, 13, 17] // Wrist and base of each finger
 const ALL_INDICES = Array.from({ length: 21 }, (_, i) => i) // 0 through 20
 
 interface SynapseWebProps {
-  leftHandRef: React.MutableRefObject<any[] | null>
-  rightHandRef: React.MutableRefObject<any[] | null>
+  leftHandRef: React.MutableRefObject<HandLandmarks | null>
+  rightHandRef: React.MutableRefObject<HandLandmarks | null>
 }
 
 // Maximum distance between hands before the digital web snaps

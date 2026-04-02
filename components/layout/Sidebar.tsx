@@ -1,12 +1,12 @@
 "use client"
 
-import { Palette, Box, Hand, Settings } from "lucide-react"
+import { Palette, Box, Hand, Settings, type LucideIcon } from "lucide-react"
 import { useSynapseStore, TabState } from "@/store/useSynapseStore"
 
 export function Sidebar() {
   const { activeTab, setActiveTab } = useSynapseStore()
 
-  const navItems: { icon: any; label: TabState }[] = [
+  const navItems: { icon: LucideIcon; label: TabState }[] = [
     { icon: Palette, label: "VISUALS" },
     { icon: Box, label: "GEOMETRY" },
     { icon: Hand, label: "INPUTS" },

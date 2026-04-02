@@ -14,7 +14,7 @@ Performance (maintaining 60 FPS) and modern architectural patterns are the highe
 
 ## Tech Stack
 
-- **Framework:** Next.js 15 (App Router)
+- **Framework:** Next.js 16 (App Router)
 - **React:** React 19
 - **Styling:** Tailwind CSS v4
 - **Language:** TypeScript
@@ -24,13 +24,13 @@ Performance (maintaining 60 FPS) and modern architectural patterns are the highe
 
 ## 🚨 CRITICAL FRAMEWORK RULES 🚨
 
-### 1. Next.js 15 (App Router) Paradigms
+### 1. Next.js 16 (App Router) Paradigms
 
-Next.js 15 introduced breaking changes from Next.js 14. You MUST adhere to these updated rules:
+Next.js 16 introduced breaking changes from Next.js 14. You MUST adhere to these updated rules:
 
 - **Async Route Params:** `params` and `searchParams` in Pages, Layouts, and Route Handlers are now **Promises**. You MUST `await` them before use.
   ```tsx
-  // GOOD (Next.js 15+)
+  // GOOD (Next.js 16+)
   export default async function Page({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
   }

@@ -3,6 +3,15 @@
 import { useEffect, useState } from "react"
 import { Hexagon } from "lucide-react"
 
+const LOADING_TEXTS = [
+  "INITIALIZING NEURAL MESH...",
+  "ALLOCATING VRAM...",
+  "CALIBRATING OPTICAL SENSORS...",
+  "LOADING TENSORFLOW MODELS...",
+  "ESTABLISHING HANDSHAKE...",
+  "AWAITING VIDEO STREAM...",
+]
+
 interface LoadingScreenProps {
   isReady: boolean
 }
@@ -12,19 +21,9 @@ export function LoadingScreen({ isReady }: LoadingScreenProps) {
   const [textIndex, setTextIndex] = useState(0)
   const [shouldRender, setShouldRender] = useState(true)
 
-  const loadingTexts = [
-    "INITIALIZING NEURAL MESH...",
-    "ALLOCATING VRAM...",
-    "CALIBRATING OPTICAL SENSORS...",
-    "LOADING TENSORFLOW MODELS...",
-    "ESTABLISHING HANDSHAKE...",
-    "AWAITING VIDEO STREAM...",
-  ]
-
   useEffect(() => {
     // If MediaPipe fires the ready flag, push to 100% and initiate fade out
     if (isReady) {
-      setProgress(100)
       const timeout = setTimeout(() => setShouldRender(false), 800)
       return () => clearTimeout(timeout)
     }
@@ -39,7 +38,7 @@ export function LoadingScreen({ isReady }: LoadingScreenProps) {
 
     // Cycle through tech jargon
     const textInterval = setInterval(() => {
-      setTextIndex((i) => (i + 1) % loadingTexts.length)
+      setTextIndex((i) => (i + 1) % LOADING_TEXTS.length)
     }, 1200)
 
     return () => {
@@ -49,6 +48,8 @@ export function LoadingScreen({ isReady }: LoadingScreenProps) {
   }, [isReady])
 
   if (!shouldRender) return null
+
+  const displayProgress = isReady ? 100 : progress
 
   return (
     <div
@@ -75,17 +76,17 @@ export function LoadingScreen({ isReady }: LoadingScreenProps) {
         <div className="w-full h-1 bg-zinc-900 rounded-full mb-4 overflow-hidden relative">
           <div
             className="absolute top-0 left-0 h-full bg-synapse-cyan shadow-[0_0_10px_rgba(0,212,255,0.8)] transition-all duration-300 ease-out"
-            style={{ width: `${Math.min(progress, 100)}%` }}
+            style={{ width: `${Math.min(displayProgress, 100)}%` }}
           />
         </div>
 
         {/* Telemetry Status */}
         <div className="flex justify-between w-full font-mono text-[9px] sm:text-xs">
           <span className="text-zinc-500 tracking-widest uppercase">
-            {isReady ? "SYSTEM ONLINE" : loadingTexts[textIndex]}
+            {isReady ? "SYSTEM ONLINE" : LOADING_TEXTS[textIndex]}
           </span>
           <span className="text-synapse-cyan drop-shadow-[0_0_5px_rgba(0,212,255,0.8)]">
-            {Math.floor(Math.min(progress, 100))}%
+            {Math.floor(Math.min(displayProgress, 100))}%
           </span>
         </div>
       </div>

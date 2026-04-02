@@ -6,21 +6,24 @@ import * as THREE from "three"
 import { HAND_CONNECTIONS } from "@/utils/hand-geometry"
 import { useSynapseStore } from "@/store/useSynapseStore"
 
+type HandLandmark = {
+  x: number
+  y: number
+  z: number
+}
+
+type HandLandmarks = HandLandmark[]
+
 interface HandSkeletonProps {
-  landmarksRef: React.MutableRefObject<any[] | null>
+  landmarksRef: React.MutableRefObject<HandLandmarks | null>
   color: string
-  isLeft: boolean
 }
 
 // A single reusable 3D object to calculate matrix transformations
 // for the 21 instanced spheres without memory overhead
 const dummy = new THREE.Object3D()
 
-export function HandSkeleton({
-  landmarksRef,
-  color,
-  isLeft,
-}: HandSkeletonProps) {
+export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const linesRef = useRef<THREE.LineSegments>(null)
 
@@ -32,9 +35,6 @@ export function HandSkeleton({
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3))
     return geo
   }, [])
-
-  // Pre-allocate vector to prevent garbage collection stuttering
-  const tempVector = useMemo(() => new THREE.Vector3(), [])
 
   useFrame(({ viewport }) => {
     const landmarks = landmarksRef.current

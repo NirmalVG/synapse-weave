@@ -3,6 +3,18 @@
 import { useEffect, useRef, useState } from "react"
 import { useSynapseStore } from "@/store/useSynapseStore"
 
+type HandLandmark = {
+  x: number
+  y: number
+  z: number
+}
+
+type HandLandmarks = HandLandmark[]
+
+interface HandsResults {
+  multiHandLandmarks?: HandLandmarks[]
+}
+
 // Math utility to smoothly transition from current position to target position
 const lerp = (start: number, end: number, factor: number) => {
   return start + (end - start) * factor
@@ -11,16 +23,18 @@ const lerp = (start: number, end: number, factor: number) => {
 export function useHandTracker() {
   const [isReady, setIsReady] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const readyRef = useRef(false)
 
   // We use Refs instead of State to prevent React from re-rendering 60 times a second
-  const rawLandmarksRef = useRef<any[]>([])
-  const smoothedLandmarksRef = useRef<any[]>([])
+  const rawLandmarksRef = useRef<HandLandmarks[]>([])
+  const smoothedLandmarksRef = useRef<HandLandmarks[]>([])
 
   useEffect(() => {
     if (typeof window === "undefined" || !videoRef.current) return
 
     // Dynamically load Hands from MediaPipe
     const loadAndSetupHands = async () => {
+      const isMobileViewport = window.matchMedia("(max-width: 768px)").matches
       const { Hands } = await import("@mediapipe/hands")
 
       const hands = new Hands({
@@ -37,8 +51,11 @@ export function useHandTracker() {
       })
 
       // Callback when MediaPipe processes a frame
-      hands.onResults((results: any) => {
-        if (!isReady) setIsReady(true)
+      hands.onResults((results: HandsResults) => {
+        if (!readyRef.current) {
+          readyRef.current = true
+          setIsReady(true)
+        }
 
         if (
           results.multiHandLandmarks &&
@@ -63,7 +80,12 @@ export function useHandTracker() {
       // Setup webcam using getUserMedia
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480 },
+          video: {
+            facingMode: "user",
+            width: { ideal: isMobileViewport ? 480 : 640 },
+            height: { ideal: isMobileViewport ? 360 : 480 },
+            frameRate: { ideal: 30, max: 30 },
+          },
         })
         if (videoRef.current) {
           videoRef.current.srcObject = stream
@@ -79,6 +101,9 @@ export function useHandTracker() {
       // --- THE ANTI-JITTER LOOP ---
       let animationFrameId: number
       let processFrameId: number
+      let isProcessingFrame = false
+      let lastProcessTime = 0
+      const targetFrameInterval = isMobileViewport ? 1000 / 24 : 1000 / 30
 
       const smoothData = () => {
         const raw = rawLandmarksRef.current
@@ -118,12 +143,24 @@ export function useHandTracker() {
       }
 
       // Process video frames
-      const processFrame = async () => {
+      const processFrame = async (timestamp: number) => {
         if (
           videoRef.current &&
-          videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA
+          videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA &&
+          !videoRef.current.paused &&
+          !videoRef.current.ended &&
+          !document.hidden &&
+          !isProcessingFrame &&
+          timestamp - lastProcessTime >= targetFrameInterval
         ) {
-          await hands.send({ image: videoRef.current })
+          isProcessingFrame = true
+          lastProcessTime = timestamp
+
+          try {
+            await hands.send({ image: videoRef.current })
+          } finally {
+            isProcessingFrame = false
+          }
         }
         processFrameId = requestAnimationFrame(processFrame)
       }
@@ -157,7 +194,7 @@ export function useHandTracker() {
     return () => {
       if (cleanup) cleanup()
     }
-  }, [isReady])
+  }, [])
 
   return { videoRef, smoothedLandmarksRef, isReady }
 }

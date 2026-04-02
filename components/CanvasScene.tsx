@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Canvas, useFrame } from "@react-three/fiber"
 import { EffectComposer, Bloom } from "@react-three/postprocessing"
 
@@ -14,6 +14,14 @@ import { SynapseWeb } from "@/components/SynapseWeb"
 import { LoadingScreen } from "@/components/ui/LoadingScreen"
 import { AmbientDust } from "@/components/AmbientDust"
 
+type HandLandmark = {
+  x: number
+  y: number
+  z: number
+}
+
+type HandLandmarks = HandLandmark[]
+
 // --- INVISIBLE OPTIMIZATION COMPONENT ---
 // This runs purely inside the WebGL render loop (60 FPS).
 // It takes the smoothed data from MediaPipe and silently distributes it
@@ -23,9 +31,9 @@ function HandDataDistributor({
   leftRef,
   rightRef,
 }: {
-  sourceRef: React.MutableRefObject<any[]>
-  leftRef: React.MutableRefObject<any>
-  rightRef: React.MutableRefObject<any>
+  sourceRef: React.MutableRefObject<HandLandmarks[]>
+  leftRef: React.MutableRefObject<HandLandmarks | null>
+  rightRef: React.MutableRefObject<HandLandmarks | null>
 }) {
   useFrame(() => {
     if (sourceRef.current.length > 0) {
@@ -46,15 +54,32 @@ function HandDataDistributor({
 export default function CanvasScene() {
   // 1. Initialize the Tracking Engine
   const { videoRef, smoothedLandmarksRef, isReady } = useHandTracker()
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
 
   // 2. Create isolated memory references for the 3D objects
-  const leftHandRef = useRef<any[] | null>(null)
-  const rightHandRef = useRef<any[] | null>(null)
+  const leftHandRef = useRef<HandLandmarks | null>(null)
+  const rightHandRef = useRef<HandLandmarks | null>(null)
 
   // 3. Subscribe to the UI Control Panel
   const systemChroma = useSynapseStore((state) => state.systemChroma)
   const glowIntensity = useSynapseStore((state) => state.glowIntensity)
   const debugMode = useSynapseStore((state) => state.debugMode)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const mediaQuery = window.matchMedia("(max-width: 768px)")
+    const syncViewportMode = () => {
+      setIsMobileViewport(mediaQuery.matches)
+    }
+
+    syncViewportMode()
+    mediaQuery.addEventListener("change", syncViewportMode)
+
+    return () => {
+      mediaQuery.removeEventListener("change", syncViewportMode)
+    }
+  }, [])
 
   return (
     <>
@@ -85,10 +110,12 @@ export default function CanvasScene() {
           camera={{ position: [0, 0, 5], fov: 50 }}
           gl={{
             alpha: true,
-            powerPreference: "high-performance",
+            powerPreference: isMobileViewport ? "default" : "high-performance",
             antialias: false,
+            stencil: false,
+            preserveDrawingBuffer: false,
           }}
-          dpr={[1, 1.5]}
+          dpr={isMobileViewport ? [0.8, 1] : [1, 1.5]}
         >
           {/* Data Router */}
           <HandDataDistributor
@@ -98,18 +125,16 @@ export default function CanvasScene() {
           />
 
           {/* Ambient Particles in the background */}
-          <AmbientDust />
+          <AmbientDust reducedMotion={isMobileViewport} />
 
           {/* The Physical Nodes & Bones */}
           <HandSkeleton
             landmarksRef={rightHandRef}
             color={systemChroma}
-            isLeft={false}
           />
           <HandSkeleton
             landmarksRef={leftHandRef}
             color={systemChroma}
-            isLeft={true}
           />
 
           {/* The Inter-hand Connection Logic */}
@@ -120,8 +145,8 @@ export default function CanvasScene() {
           <EffectComposer enableNormalPass={false} multisampling={0}>
             <Bloom
               luminanceThreshold={0.1}
-              mipmapBlur
-              intensity={glowIntensity}
+              mipmapBlur={!isMobileViewport}
+              intensity={isMobileViewport ? glowIntensity * 0.55 : glowIntensity}
             />
           </EffectComposer>
         </Canvas>
