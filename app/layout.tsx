@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+import { PWAProvider } from "@/components/PWAProvider"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -129,23 +130,19 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "32x32", type: "image/x-icon" },
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
     ],
     apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
-    ],
-    other: [
       {
-        rel: "mask-icon",
-        url: "/safari-pinned-tab.svg",
-        color: "#00d4ff",
+        url: "/apple-touch-icon-180x180.png",
+        sizes: "180x180",
+        type: "image/png",
       },
     ],
   },
 
   // App Manifest
-  manifest: "/site.webmanifest",
+  manifest: "/manifest.json",
 
   // Theme Color (for browser chrome on mobile)
   themeColor: [
@@ -252,6 +249,8 @@ export default function RootLayout({
 
       {/* Body with semantic structure */}
       <body className="min-h-full flex flex-col bg-[#050505] text-zinc-100">
+        <PWAProvider />
+
         {/* Main application content */}
         {children}
 
