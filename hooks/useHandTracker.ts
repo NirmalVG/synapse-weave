@@ -215,6 +215,11 @@ export function useHandTracker() {
             continue
           }
 
+          if (!smoothedHand) {
+            smoothed[i] = cloneLandmarks(rawHand)
+            continue
+          }
+
           for (let j = 0; j < rawHand.length; j++) {
             const dx = rawHand[j].x - smoothedHand[j].x
             const dy = rawHand[j].y - smoothedHand[j].y
