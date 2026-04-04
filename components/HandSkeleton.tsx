@@ -29,6 +29,10 @@ export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
   const linesRef = useRef<THREE.LineSegments>(null)
   const lastVisibleLandmarksRef = useRef<HandLandmarks | null>(null)
   const lastSeenAtRef = useRef(0)
+  const lineColor = useMemo(
+    () => new THREE.Color(color).multiplyScalar(2.4),
+    [color],
+  )
 
   // Pre-allocate geometry for the skeleton bones
   // 21 connections * 2 points per connection * 3 coordinates (x,y,z)
@@ -134,9 +138,9 @@ export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
         frustumCulled={false}
       >
         <lineBasicMaterial
-          color={color}
+          color={lineColor}
           transparent
-          opacity={0.6}
+          opacity={0.95}
           toneMapped={false}
         />
       </lineSegments>

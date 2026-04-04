@@ -13,6 +13,7 @@ type HandLandmark = {
 }
 
 type HandLandmarks = HandLandmark[]
+type LiveHandState = [boolean, boolean]
 
 // Additional index maps for the different Binding Protocols
 const PALM_INDICES = [0, 5, 9, 13, 17] // Wrist and base of each finger
@@ -21,6 +22,7 @@ const ALL_INDICES = Array.from({ length: 21 }, (_, i) => i) // 0 through 20
 interface SynapseWebProps {
   leftHandRef: React.MutableRefObject<HandLandmarks | null>
   rightHandRef: React.MutableRefObject<HandLandmarks | null>
+  liveStateRef: React.MutableRefObject<LiveHandState>
 }
 
 // Maximum distance between hands before the digital web snaps
@@ -28,7 +30,11 @@ const CONNECT_THRESHOLD = 3.35
 const DISCONNECT_THRESHOLD = 3.8
 const WEB_HOLD_MS = 180
 
-export function SynapseWeb({ leftHandRef, rightHandRef }: SynapseWebProps) {
+export function SynapseWeb({
+  leftHandRef,
+  rightHandRef,
+  liveStateRef,
+}: SynapseWebProps) {
   const linesRef = useRef<THREE.LineSegments>(null)
   const lastVisiblePairRef = useRef<{
     left: HandLandmarks
@@ -41,6 +47,10 @@ export function SynapseWeb({ leftHandRef, rightHandRef }: SynapseWebProps) {
   const systemChroma = useSynapseStore((state) => state.systemChroma)
   const threadThickness = useSynapseStore((state) => state.threadThickness)
   const bindingProtocol = useSynapseStore((state) => state.bindingProtocol)
+  const webColor = useMemo(
+    () => new THREE.Color(systemChroma).multiplyScalar(2.8),
+    [systemChroma],
+  )
 
   // Pre-allocate maximum possible lines (Full Skeleton: 21 * 21 = 441 lines)
   // 441 lines * 2 vertices per line * 3 coordinates (x,y,z) = 2646 float values
@@ -56,9 +66,10 @@ export function SynapseWeb({ leftHandRef, rightHandRef }: SynapseWebProps) {
   useFrame(({ viewport }) => {
     const liveLeft = leftHandRef.current
     const liveRight = rightHandRef.current
+    const [isRightLive, isLeftLive] = liveStateRef.current
     const now = performance.now()
 
-    if (liveLeft && liveRight) {
+    if (liveLeft && liveRight && isLeftLive && isRightLive) {
       lastVisiblePairRef.current = {
         left: liveLeft,
         right: liveRight,
@@ -67,18 +78,27 @@ export function SynapseWeb({ leftHandRef, rightHandRef }: SynapseWebProps) {
     }
 
     const shouldHoldPreviousPair =
-      (!liveLeft || !liveRight) &&
+      !isLeftLive &&
+      !isRightLive &&
       now - lastSeenAtRef.current <= WEB_HOLD_MS &&
       lastVisiblePairRef.current
-    const left = liveLeft ?? lastVisiblePairRef.current?.left ?? null
-    const right = liveRight ?? lastVisiblePairRef.current?.right ?? null
+    const left = shouldHoldPreviousPair
+      ? lastVisiblePairRef.current?.left ?? null
+      : isLeftLive
+        ? liveLeft
+        : null
+    const right = shouldHoldPreviousPair
+      ? lastVisiblePairRef.current?.right ?? null
+      : isRightLive
+        ? liveRight
+        : null
 
     // If we don't have both hands, hide the web and exit early
     if (
       !left ||
       !right ||
       !linesRef.current ||
-      (!liveLeft && !liveRight && !shouldHoldPreviousPair)
+      ((!isLeftLive || !isRightLive) && !shouldHoldPreviousPair)
     ) {
       lastVisiblePairRef.current = null
       webActiveRef.current = false
@@ -159,9 +179,9 @@ export function SynapseWeb({ leftHandRef, rightHandRef }: SynapseWebProps) {
   return (
     <lineSegments ref={linesRef} geometry={webGeometry} frustumCulled={false}>
       <lineBasicMaterial
-        color={systemChroma}
+        color={webColor}
         transparent
-        opacity={0.7}
+        opacity={0.92}
         linewidth={threadThickness} // Note: WebGL standard lines ignore thickness > 1 on Windows/Chrome.
         toneMapped={false} // Crucial for Bloom post-processing to glow correctly
       />

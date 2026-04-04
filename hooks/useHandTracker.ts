@@ -10,9 +10,10 @@ import { useSynapseStore } from "@/store/useSynapseStore"
 
 type HandLandmarks = NormalizedLandmarkList
 type TrackedHands = [HandLandmarks | null, HandLandmarks | null]
+type LiveHandState = [boolean, boolean]
 
 const TARGET_FRAME_MS = 1000 / 60
-const HAND_LOSS_GRACE_MS = 120
+const HAND_LOSS_GRACE_MS = 650
 const MICRO_MOTION_THRESHOLD = 0.008
 const DEPTH_JITTER_THRESHOLD = 0.012
 const HAND_SLOT_BY_LABEL: Record<Handedness["label"], 0 | 1> = {
@@ -27,6 +28,14 @@ const lerp = (start: number, end: number, factor: number) => {
 
 const clamp = (value: number, min: number, max: number) => {
   return Math.min(Math.max(value, min), max)
+}
+
+const getDetectionConfidence = (confidence: number) => {
+  return clamp(confidence - 0.22, 0.35, 0.8)
+}
+
+const getTrackingConfidence = (confidence: number) => {
+  return clamp(confidence - 0.12, 0.3, 0.85)
 }
 
 const getAdaptiveLerpFactor = (
@@ -57,6 +66,33 @@ const cloneLandmarks = (landmarks: HandLandmarks): HandLandmarks =>
     z: point.z,
   }))
 
+const getHandAnchor = (landmarks: HandLandmarks) => {
+  const wrist = landmarks[0]
+  const middleKnuckle = landmarks[9]
+
+  return {
+    x: (wrist.x + middleKnuckle.x) * 0.5,
+    y: (wrist.y + middleKnuckle.y) * 0.5,
+    z: (wrist.z + middleKnuckle.z) * 0.5,
+  }
+}
+
+const getHandDistance = (
+  current: HandLandmarks | null,
+  next: HandLandmarks | null,
+) => {
+  if (!current || !next) return Number.POSITIVE_INFINITY
+
+  const currentAnchor = getHandAnchor(current)
+  const nextAnchor = getHandAnchor(next)
+
+  return Math.hypot(
+    currentAnchor.x - nextAnchor.x,
+    currentAnchor.y - nextAnchor.y,
+    (currentAnchor.z - nextAnchor.z) * 1.35,
+  )
+}
+
 const sameLandmarkShape = (
   current: HandLandmarks | null,
   next: HandLandmarks | null,
@@ -65,7 +101,10 @@ const sameLandmarkShape = (
   return current.length === next.length
 }
 
-const mapResultsToHands = (results: HandsResults): TrackedHands => {
+const mapResultsToHands = (
+  results: HandsResults,
+  previousHands: TrackedHands,
+): TrackedHands => {
   const nextHands = createEmptyHands()
   const { multiHandLandmarks, multiHandedness } = results
 
@@ -73,18 +112,74 @@ const mapResultsToHands = (results: HandsResults): TrackedHands => {
     return nextHands
   }
 
-  if (multiHandedness?.length) {
-    multiHandedness.forEach(({ index, label }) => {
-      const landmarks = multiHandLandmarks[index]
-      if (!landmarks) return
-      nextHands[HAND_SLOT_BY_LABEL[label]] = landmarks
-    })
+  const detections = multiHandLandmarks.map((landmarks, index) => ({
+    landmarks,
+    preferredSlot: multiHandedness?.[index]
+      ? HAND_SLOT_BY_LABEL[multiHandedness[index].label]
+      : null,
+  }))
 
-    return nextHands
+  const availableSlots = new Set<0 | 1>([0, 1])
+
+  const assignDetectionToSlot = (detectionIndex: number, slot: 0 | 1) => {
+    nextHands[slot] = detections[detectionIndex].landmarks
+    availableSlots.delete(slot)
+    detections.splice(detectionIndex, 1)
   }
 
-  nextHands[0] = multiHandLandmarks[0] ?? null
-  nextHands[1] = multiHandLandmarks[1] ?? null
+  if (detections.length === 1) {
+    const [detection] = detections
+    const distanceToRight = getHandDistance(previousHands[0], detection.landmarks)
+    const distanceToLeft = getHandDistance(previousHands[1], detection.landmarks)
+
+    if (Number.isFinite(distanceToRight) || Number.isFinite(distanceToLeft)) {
+      nextHands[distanceToRight <= distanceToLeft ? 0 : 1] = detection.landmarks
+      return nextHands
+    }
+
+    if (detection.preferredSlot !== null) {
+      nextHands[detection.preferredSlot] = detection.landmarks
+      return nextHands
+    }
+  }
+
+  for (let i = detections.length - 1; i >= 0; i--) {
+    const preferredSlot = detections[i].preferredSlot
+
+    if (preferredSlot !== null && availableSlots.has(preferredSlot)) {
+      assignDetectionToSlot(i, preferredSlot)
+    }
+  }
+
+  while (detections.length) {
+    let bestDetectionIndex = 0
+    let bestSlot: 0 | 1 = Array.from(availableSlots)[0] ?? 0
+    let bestDistance = Number.POSITIVE_INFINITY
+
+    detections.forEach((detection, detectionIndex) => {
+      availableSlots.forEach((slot) => {
+        const distance = getHandDistance(
+          previousHands[slot],
+          detection.landmarks,
+        )
+
+        if (distance < bestDistance) {
+          bestDistance = distance
+          bestDetectionIndex = detectionIndex
+          bestSlot = slot
+        }
+      })
+    })
+
+    if (!Number.isFinite(bestDistance)) {
+      const fallbackSlot = Array.from(availableSlots)[0] ?? 0
+      assignDetectionToSlot(0, fallbackSlot)
+      continue
+    }
+
+    assignDetectionToSlot(bestDetectionIndex, bestSlot)
+  }
+
   return nextHands
 }
 
@@ -96,6 +191,7 @@ export function useHandTracker() {
   // We use Refs instead of State to prevent React from re-rendering 60 times a second
   const rawLandmarksRef = useRef<TrackedHands>(createEmptyHands())
   const smoothedLandmarksRef = useRef<TrackedHands>(createEmptyHands())
+  const liveHandStateRef = useRef<LiveHandState>([false, false])
   const lastSeenAtRef = useRef<[number, number]>([0, 0])
 
   useEffect(() => {
@@ -118,8 +214,8 @@ export function useHandTracker() {
       hands.setOptions({
         maxNumHands: 2,
         modelComplexity: 1,
-        minDetectionConfidence: initialTrackingConfidence,
-        minTrackingConfidence: initialTrackingConfidence,
+        minDetectionConfidence: getDetectionConfidence(initialTrackingConfidence),
+        minTrackingConfidence: getTrackingConfidence(initialTrackingConfidence),
       })
 
       // Callback when MediaPipe processes a frame
@@ -129,20 +225,36 @@ export function useHandTracker() {
           setIsReady(true)
         }
 
-        const mappedHands = mapResultsToHands(results)
-        rawLandmarksRef.current = mappedHands
+        const now = performance.now()
+        const mappedHands = mapResultsToHands(results, rawLandmarksRef.current)
+        const nextRawHands = createEmptyHands()
+        const nextLiveHandState: LiveHandState = [false, false]
 
         mappedHands.forEach((hand, index) => {
           if (hand) {
-            lastSeenAtRef.current[index] = performance.now()
+            lastSeenAtRef.current[index] = now
+            nextRawHands[index] = hand
+            nextLiveHandState[index] = true
 
             if (
               !sameLandmarkShape(smoothedLandmarksRef.current[index], hand)
             ) {
               smoothedLandmarksRef.current[index] = cloneLandmarks(hand)
             }
+
+            return
           }
+
+          if (now - lastSeenAtRef.current[index] <= HAND_LOSS_GRACE_MS) {
+            nextRawHands[index] = rawLandmarksRef.current[index]
+            return
+          }
+
+          smoothedLandmarksRef.current[index] = null
         })
+
+        rawLandmarksRef.current = nextRawHands
+        liveHandStateRef.current = nextLiveHandState
       })
 
       // Setup webcam using getUserMedia
@@ -180,8 +292,12 @@ export function useHandTracker() {
 
           currentTrackingConfidence = state.trackingConfidence
           hands.setOptions({
-            minDetectionConfidence: currentTrackingConfidence,
-            minTrackingConfidence: currentTrackingConfidence,
+            minDetectionConfidence: getDetectionConfidence(
+              currentTrackingConfidence,
+            ),
+            minTrackingConfidence: getTrackingConfidence(
+              currentTrackingConfidence,
+            ),
           })
         },
       )
@@ -204,9 +320,7 @@ export function useHandTracker() {
           const smoothedHand = smoothed[i]
 
           if (!rawHand) {
-            if (now - lastSeenAtRef.current[i] > HAND_LOSS_GRACE_MS) {
-              smoothed[i] = null
-            }
+            smoothed[i] = null
             continue
           }
 
@@ -312,5 +426,5 @@ export function useHandTracker() {
     }
   }, [])
 
-  return { videoRef, smoothedLandmarksRef, isReady }
+  return { videoRef, smoothedLandmarksRef, liveHandStateRef, isReady }
 }

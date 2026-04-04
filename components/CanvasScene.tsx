@@ -22,6 +22,7 @@ type HandLandmark = {
 
 type HandLandmarks = HandLandmark[]
 type TrackedHands = [HandLandmarks | null, HandLandmarks | null]
+type LiveHandState = [boolean, boolean]
 
 // --- INVISIBLE OPTIMIZATION COMPONENT ---
 // This runs purely inside the WebGL render loop (60 FPS).
@@ -43,16 +44,31 @@ function HandDataDistributor({
   return null
 }
 
+function LiveHandStateDistributor({
+  sourceRef,
+  targetRef,
+}: {
+  sourceRef: React.MutableRefObject<LiveHandState>
+  targetRef: React.MutableRefObject<LiveHandState>
+}) {
+  useFrame(() => {
+    targetRef.current = sourceRef.current
+  })
+  return null
+}
+
 // --- MAIN CANVAS COMPONENT ---
 
 export default function CanvasScene() {
   // 1. Initialize the Tracking Engine
-  const { videoRef, smoothedLandmarksRef, isReady } = useHandTracker()
+  const { videoRef, smoothedLandmarksRef, liveHandStateRef, isReady } =
+    useHandTracker()
   const [isMobileViewport, setIsMobileViewport] = useState(false)
 
   // 2. Create isolated memory references for the 3D objects
   const leftHandRef = useRef<HandLandmarks | null>(null)
   const rightHandRef = useRef<HandLandmarks | null>(null)
+  const liveStateRef = useRef<LiveHandState>([false, false])
 
   // 3. Subscribe to the UI Control Panel
   const systemChroma = useSynapseStore((state) => state.systemChroma)
@@ -117,6 +133,10 @@ export default function CanvasScene() {
             leftRef={leftHandRef}
             rightRef={rightHandRef}
           />
+          <LiveHandStateDistributor
+            sourceRef={liveHandStateRef}
+            targetRef={liveStateRef}
+          />
 
           {/* Ambient Particles in the background */}
           <AmbientDust reducedMotion={isMobileViewport} />
@@ -132,7 +152,11 @@ export default function CanvasScene() {
           />
 
           {/* The Inter-hand Connection Logic */}
-          <SynapseWeb leftHandRef={leftHandRef} rightHandRef={rightHandRef} />
+          <SynapseWeb
+            leftHandRef={leftHandRef}
+            rightHandRef={rightHandRef}
+            liveStateRef={liveStateRef}
+          />
 
           {/* Post-Processing Pipeline 
               multisampling={0} is critical for transparent backgrounds on iOS/Mobile Safari */}
