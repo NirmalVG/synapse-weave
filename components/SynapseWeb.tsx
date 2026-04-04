@@ -28,7 +28,50 @@ interface SynapseWebProps {
 // Maximum distance between hands before the digital web snaps
 const CONNECT_THRESHOLD = 3.35
 const DISCONNECT_THRESHOLD = 3.8
+const PALM_CONNECT_THRESHOLD = 4.1
+const PALM_DISCONNECT_THRESHOLD = 4.5
 const WEB_HOLD_MS = 180
+
+const mapLandmarkToVector = (
+  point: HandLandmark,
+  viewport: { width: number; height: number },
+) =>
+  new THREE.Vector3(
+    (point.x - 0.5) * viewport.width * -1,
+    -(point.y - 0.5) * viewport.height,
+    -point.z * 10,
+  )
+
+const getPalmVectors = (
+  hand: HandLandmarks,
+  viewport: { width: number; height: number },
+) => {
+  const palmPoints = PALM_INDICES.map((index) => hand[index]).filter(Boolean)
+
+  if (!palmPoints.length) {
+    return []
+  }
+
+  const palmCenter = palmPoints.reduce(
+    (acc, point) => ({
+      x: acc.x + point.x,
+      y: acc.y + point.y,
+      z: acc.z + point.z,
+    }),
+    { x: 0, y: 0, z: 0 },
+  )
+
+  const averagedCenter = {
+    x: palmCenter.x / palmPoints.length,
+    y: palmCenter.y / palmPoints.length,
+    z: palmCenter.z / palmPoints.length,
+  }
+
+  return [
+    mapLandmarkToVector(averagedCenter, viewport),
+    ...palmPoints.map((point) => mapLandmarkToVector(point, viewport)),
+  ]
+}
 
 export function SynapseWeb({
   leftHandRef,
@@ -64,10 +107,22 @@ export function SynapseWeb({
   }, [])
 
   useFrame(({ viewport }) => {
+    const systemEnabled = useSynapseStore.getState().systemEnabled
     const liveLeft = leftHandRef.current
     const liveRight = rightHandRef.current
     const [isRightLive, isLeftLive] = liveStateRef.current
     const now = performance.now()
+
+    if (!systemEnabled) {
+      lastVisiblePairRef.current = null
+      lastSeenAtRef.current = 0
+      webActiveRef.current = false
+      if (linesRef.current) {
+        linesRef.current.visible = false
+        linesRef.current.geometry.setDrawRange(0, 0)
+      }
+      return
+    }
 
     if (liveLeft && liveRight && isLeftLive && isRightLive) {
       lastVisiblePairRef.current = {
@@ -106,11 +161,33 @@ export function SynapseWeb({
       return
     }
 
-    // Determine which points to connect based on UI Selection
-    let activeIndices: number[] = []
-    if (bindingProtocol === "FINGERTIPS") activeIndices = FINGERTIP_INDICES
-    else if (bindingProtocol === "PALMS") activeIndices = PALM_INDICES
-    else if (bindingProtocol === "FULL SKELETON") activeIndices = ALL_INDICES
+    const leftVectors =
+      bindingProtocol === "PALMS"
+        ? getPalmVectors(left, viewport)
+        : (bindingProtocol === "FINGERTIPS"
+            ? FINGERTIP_INDICES
+            : ALL_INDICES
+          )
+            .map((index) => left[index])
+            .filter(Boolean)
+            .map((point) => mapLandmarkToVector(point, viewport))
+
+    const rightVectors =
+      bindingProtocol === "PALMS"
+        ? getPalmVectors(right, viewport)
+        : (bindingProtocol === "FINGERTIPS"
+            ? FINGERTIP_INDICES
+            : ALL_INDICES
+          )
+            .map((index) => right[index])
+            .filter(Boolean)
+            .map((point) => mapLandmarkToVector(point, viewport))
+
+    if (!leftVectors.length || !rightVectors.length) {
+      webActiveRef.current = false
+      linesRef.current.visible = false
+      return
+    }
 
     const positions = linesRef.current.geometry.attributes.position
       .array as Float32Array
@@ -118,30 +195,20 @@ export function SynapseWeb({
     let arrayIdx = 0
 
     // Check distance between selected points on left vs right hand
-    activeIndices.forEach((lIdx) => {
-      activeIndices.forEach((rIdx) => {
-        const lPoint = left[lIdx]
-        const rPoint = right[rIdx]
+    const connectThreshold =
+      bindingProtocol === "PALMS" ? PALM_CONNECT_THRESHOLD : CONNECT_THRESHOLD
+    const disconnectThreshold =
+      bindingProtocol === "PALMS"
+        ? PALM_DISCONNECT_THRESHOLD
+        : DISCONNECT_THRESHOLD
 
-        // Ensure points exist (sometimes MediaPipe skips a frame on specific nodes)
-        if (!lPoint || !rPoint) return
-
-        // Map MediaPipe normalized coords (0 to 1) into 3D Viewport space
-        const lVector = new THREE.Vector3(
-          (lPoint.x - 0.5) * viewport.width * -1, // Flip X to match mirrored camera
-          -(lPoint.y - 0.5) * viewport.height,
-          -lPoint.z * 10,
-        )
-        const rVector = new THREE.Vector3(
-          (rPoint.x - 0.5) * viewport.width * -1,
-          -(rPoint.y - 0.5) * viewport.height,
-          -rPoint.z * 10,
-        )
+    leftVectors.forEach((lVector) => {
+      rightVectors.forEach((rVector) => {
 
         const distance = lVector.distanceTo(rVector)
         const threshold = webActiveRef.current
-          ? DISCONNECT_THRESHOLD
-          : CONNECT_THRESHOLD
+          ? disconnectThreshold
+          : connectThreshold
 
         // Hysteresis prevents the web from chattering when distance sits near the edge.
         if (distance < threshold) {

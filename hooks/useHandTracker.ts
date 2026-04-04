@@ -194,6 +194,12 @@ export function useHandTracker() {
   const liveHandStateRef = useRef<LiveHandState>([false, false])
   const lastSeenAtRef = useRef<[number, number]>([0, 0])
 
+  const resetTrackingState = () => {
+    rawLandmarksRef.current = createEmptyHands()
+    smoothedLandmarksRef.current = createEmptyHands()
+    liveHandStateRef.current = [false, false]
+  }
+
   useEffect(() => {
     if (typeof window === "undefined" || !videoRef.current) return
 
@@ -220,6 +226,11 @@ export function useHandTracker() {
 
       // Callback when MediaPipe processes a frame
       hands.onResults((results: HandsResults) => {
+        if (!useSynapseStore.getState().systemEnabled) {
+          resetTrackingState()
+          return
+        }
+
         if (!readyRef.current) {
           readyRef.current = true
           setIsReady(true)
@@ -301,11 +312,30 @@ export function useHandTracker() {
           })
         },
       )
+      const unsubscribeSystemEnabled = useSynapseStore.subscribe((state) => {
+        if (!state.systemEnabled) {
+          resetTrackingState()
+          lastSeenAtRef.current = [0, 0]
+          if (videoRef.current && !videoRef.current.paused) {
+            videoRef.current.pause()
+          }
+          return
+        }
+
+        if (videoRef.current?.srcObject && videoRef.current.paused) {
+          void videoRef.current.play().catch(() => {})
+        }
+      })
 
       const smoothData = () => {
         const now = performance.now()
         const deltaFrames = Math.min((now - lastSmoothTime) / TARGET_FRAME_MS, 3)
         lastSmoothTime = now
+
+        if (!useSynapseStore.getState().systemEnabled) {
+          animationFrameId = requestAnimationFrame(smoothData)
+          return
+        }
 
         const raw = rawLandmarksRef.current
         const smoothed = smoothedLandmarksRef.current
@@ -374,6 +404,7 @@ export function useHandTracker() {
       // Process video frames
       const processFrame = async (timestamp: number) => {
         if (
+          useSynapseStore.getState().systemEnabled &&
           videoRef.current &&
           videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA &&
           !videoRef.current.paused &&
@@ -403,6 +434,7 @@ export function useHandTracker() {
         cancelAnimationFrame(animationFrameId)
         cancelAnimationFrame(processFrameId)
         unsubscribeTrackingConfidence()
+        unsubscribeSystemEnabled()
         hands.close()
         if (videoRef.current && videoRef.current.srcObject) {
           const tracks = (videoRef.current.srcObject as MediaStream).getTracks()

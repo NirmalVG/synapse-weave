@@ -29,6 +29,9 @@ interface SynapseState {
   setTrackingConfidence: (confidence: number) => void
 
   // System
+  systemEnabled: boolean
+  setSystemEnabled: (enabled: boolean) => void
+  toggleSystemEnabled: () => void
   debugMode: boolean
   setDebugMode: (debug: boolean) => void
 }
@@ -58,6 +61,11 @@ export const useSynapseStore = create<SynapseState>((set) => ({
   trackingConfidence: 0.7,
   setTrackingConfidence: (confidence) =>
     set({ trackingConfidence: confidence }),
+
+  systemEnabled: true,
+  setSystemEnabled: (enabled) => set({ systemEnabled: enabled }),
+  toggleSystemEnabled: () =>
+    set((state) => ({ systemEnabled: !state.systemEnabled })),
 
   debugMode: false,
   setDebugMode: (debug) => set({ debugMode: debug }),

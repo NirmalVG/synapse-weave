@@ -44,8 +44,22 @@ export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
   }, [])
 
   useFrame(({ viewport }) => {
+    const systemEnabled = useSynapseStore.getState().systemEnabled
     const liveLandmarks = landmarksRef.current
     const now = performance.now()
+
+    if (!systemEnabled) {
+      lastVisibleLandmarksRef.current = null
+      lastSeenAtRef.current = 0
+      if (meshRef.current) {
+        meshRef.current.count = 0
+        meshRef.current.visible = false
+      }
+      if (linesRef.current) {
+        linesRef.current.visible = false
+      }
+      return
+    }
 
     if (liveLandmarks) {
       lastVisibleLandmarksRef.current = liveLandmarks
@@ -66,7 +80,10 @@ export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
       (!liveLandmarks && !shouldHoldPreviousFrame)
     ) {
       lastVisibleLandmarksRef.current = null
-      if (meshRef.current) meshRef.current.count = 0
+      if (meshRef.current) {
+        meshRef.current.count = 0
+        meshRef.current.visible = false
+      }
       if (linesRef.current) linesRef.current.visible = false
       return
     }
