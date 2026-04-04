@@ -26,6 +26,8 @@ const geistMono = Geist_Mono({
  * - Target Audience: Developers, ML enthusiasts, interactive media creators
  */
 export const metadata: Metadata = {
+  metadataBase: new URL("https://synapse-weave.com"),
+
   // Core SEO Meta Tags
   title: "SynapseWeave - Real-time 3D Hand Gesture Visualization & Tracking",
   description:
@@ -75,17 +77,10 @@ export const metadata: Metadata = {
     siteName: "SynapseWeave",
     images: [
       {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
+        url: "/synapse-weave-logo.png",
+        width: 912,
+        height: 912,
         alt: "SynapseWeave - Hand gesture tracking visualization",
-        type: "image/png",
-      },
-      {
-        url: "/og-image-square.png",
-        width: 800,
-        height: 800,
-        alt: "SynapseWeave Logo",
         type: "image/png",
       },
     ],
@@ -98,7 +93,7 @@ export const metadata: Metadata = {
     title: "SynapseWeave - Real-time 3D Hand Gesture Tracking",
     description:
       "Experience real-time hand gesture tracking and 3D visualization powered by MediaPipe.",
-    images: ["/twitter-image.png"],
+    images: ["/synapse-weave-logo.png"],
     creator: "@SynapseWeave",
     site: "@SynapseWeave",
   },
