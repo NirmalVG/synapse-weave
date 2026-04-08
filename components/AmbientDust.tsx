@@ -1,6 +1,7 @@
 "use client"
 
 import { Sparkles } from "@react-three/drei"
+import { AdditiveBlending } from "three"
 import { useSynapseStore } from "@/store/useSynapseStore"
 
 interface AmbientDustProps {
@@ -21,7 +22,15 @@ export function AmbientDust({ reducedMotion = false }: AmbientDustProps) {
         color={systemChroma}
         opacity={0.4}
         noise={reducedMotion ? 0.2 : 0.5}
-      />
+      >
+        <sparklesImplMaterial
+          transparent
+          alphaTest={0.01}
+          depthTest={false}
+          depthWrite={false}
+          blending={AdditiveBlending}
+        />
+      </Sparkles>
       {/* Back layer: Slower, smaller particles for parallax depth */}
       <Sparkles
         count={reducedMotion ? 160 : 400}
@@ -32,7 +41,15 @@ export function AmbientDust({ reducedMotion = false }: AmbientDustProps) {
         opacity={0.1}
         noise={reducedMotion ? 0.35 : 1}
         position={[0, 0, -5]}
-      />
+      >
+        <sparklesImplMaterial
+          transparent
+          alphaTest={0.01}
+          depthTest={false}
+          depthWrite={false}
+          blending={AdditiveBlending}
+        />
+      </Sparkles>
     </group>
   )
 }

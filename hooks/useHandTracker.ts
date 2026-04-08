@@ -200,6 +200,12 @@ export function useHandTracker() {
     liveHandStateRef.current = [false, false]
   }
 
+  const markReady = () => {
+    if (readyRef.current) return
+    readyRef.current = true
+    setIsReady(true)
+  }
+
   useEffect(() => {
     if (typeof window === "undefined" || !videoRef.current) return
 
@@ -231,10 +237,7 @@ export function useHandTracker() {
           return
         }
 
-        if (!readyRef.current) {
-          readyRef.current = true
-          setIsReady(true)
-        }
+        markReady()
 
         const now = performance.now()
         const mappedHands = mapResultsToHands(results, rawLandmarksRef.current)
@@ -281,11 +284,16 @@ export function useHandTracker() {
         if (videoRef.current) {
           videoRef.current.srcObject = stream
           videoRef.current.onloadedmetadata = () => {
-            videoRef.current!.play()
+            void videoRef.current!.play().then(() => {
+              // Mobile browsers can delay MediaPipe callbacks; transition UI once video is live.
+              markReady()
+            })
           }
         }
       } catch (error) {
         console.error("Failed to access camera:", error)
+        // Avoid trapping mobile users behind a permanent loading overlay.
+        markReady()
         return
       }
 
@@ -406,7 +414,7 @@ export function useHandTracker() {
         if (
           useSynapseStore.getState().systemEnabled &&
           videoRef.current &&
-          videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA &&
+          videoRef.current.readyState >= videoRef.current.HAVE_CURRENT_DATA &&
           !videoRef.current.paused &&
           !videoRef.current.ended &&
           !document.hidden &&

@@ -64,6 +64,7 @@ export default function CanvasScene() {
   const { videoRef, smoothedLandmarksRef, liveHandStateRef, isReady } =
     useHandTracker()
   const [isMobileViewport, setIsMobileViewport] = useState(false)
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null)
 
   // 2. Create isolated memory references for the 3D objects
   const leftHandRef = useRef<HandLandmarks | null>(null)
@@ -90,6 +91,72 @@ export default function CanvasScene() {
       mediaQuery.removeEventListener("change", syncViewportMode)
     }
   }, [])
+
+  useEffect(() => {
+    if (
+      !isMobileViewport ||
+      typeof navigator === "undefined" ||
+      !("wakeLock" in navigator)
+    ) {
+      void wakeLockRef.current?.release()
+      wakeLockRef.current = null
+      return
+    }
+
+    let isMounted = true
+
+    const releaseWakeLock = async () => {
+      if (!wakeLockRef.current) return
+
+      try {
+        await wakeLockRef.current.release()
+      } catch {
+        // Ignore release failures to avoid interrupting the experience.
+      } finally {
+        wakeLockRef.current = null
+      }
+    }
+
+    const requestWakeLock = async () => {
+      if (document.visibilityState !== "visible" || wakeLockRef.current) return
+
+      try {
+        const sentinel = await navigator.wakeLock.request("screen")
+
+        if (!isMounted) {
+          await sentinel.release()
+          return
+        }
+
+        wakeLockRef.current = sentinel
+        sentinel.addEventListener("release", () => {
+          if (wakeLockRef.current === sentinel) {
+            wakeLockRef.current = null
+          }
+        })
+      } catch {
+        // Some mobile browsers block wake lock unless the page is active.
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void requestWakeLock()
+        return
+      }
+
+      void releaseWakeLock()
+    }
+
+    void requestWakeLock()
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      isMounted = false
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      void releaseWakeLock()
+    }
+  }, [isMobileViewport])
 
   return (
     <>
