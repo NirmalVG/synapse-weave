@@ -13,7 +13,6 @@ type TrackedHands = [HandLandmarks | null, HandLandmarks | null]
 type LiveHandState = [boolean, boolean]
 
 const TARGET_FRAME_MS = 1000 / 60
-const HAND_LOSS_GRACE_MS = 650
 const MICRO_MOTION_THRESHOLD = 0.008
 const DEPTH_JITTER_THRESHOLD = 0.012
 const HAND_SLOT_BY_LABEL: Record<Handedness["label"], 0 | 1> = {
@@ -129,16 +128,20 @@ const mapResultsToHands = (
 
   if (detections.length === 1) {
     const [detection] = detections
+
+    // When MediaPipe identifies the hand label, keep the detection pinned to
+    // that slot so a fast-moving hand does not briefly duplicate into the
+    // opposite side due to proximity matching.
+    if (detection.preferredSlot !== null) {
+      nextHands[detection.preferredSlot] = detection.landmarks
+      return nextHands
+    }
+
     const distanceToRight = getHandDistance(previousHands[0], detection.landmarks)
     const distanceToLeft = getHandDistance(previousHands[1], detection.landmarks)
 
     if (Number.isFinite(distanceToRight) || Number.isFinite(distanceToLeft)) {
       nextHands[distanceToRight <= distanceToLeft ? 0 : 1] = detection.landmarks
-      return nextHands
-    }
-
-    if (detection.preferredSlot !== null) {
-      nextHands[detection.preferredSlot] = detection.landmarks
       return nextHands
     }
   }
@@ -195,7 +198,6 @@ export function useHandTracker() {
   const rawLandmarksRef = useRef<TrackedHands>(createEmptyHands())
   const smoothedLandmarksRef = useRef<TrackedHands>(createEmptyHands())
   const liveHandStateRef = useRef<LiveHandState>([false, false])
-  const lastSeenAtRef = useRef<[number, number]>([0, 0])
 
   const resetTrackingState = () => {
     rawLandmarksRef.current = createEmptyHands()
@@ -243,14 +245,12 @@ export function useHandTracker() {
 
         markReady()
 
-        const now = performance.now()
         const mappedHands = mapResultsToHands(results, rawLandmarksRef.current)
         const nextRawHands = createEmptyHands()
         const nextLiveHandState: LiveHandState = [false, false]
 
         mappedHands.forEach((hand, index) => {
           if (hand) {
-            lastSeenAtRef.current[index] = now
             nextRawHands[index] = hand
             nextLiveHandState[index] = true
 
@@ -260,11 +260,6 @@ export function useHandTracker() {
               smoothedLandmarksRef.current[index] = cloneLandmarks(hand)
             }
 
-            return
-          }
-
-          if (now - lastSeenAtRef.current[index] <= HAND_LOSS_GRACE_MS) {
-            nextRawHands[index] = rawLandmarksRef.current[index]
             return
           }
 
@@ -330,7 +325,6 @@ export function useHandTracker() {
       const unsubscribeSystemEnabled = useSynapseStore.subscribe((state) => {
         if (!state.systemEnabled) {
           resetTrackingState()
-          lastSeenAtRef.current = [0, 0]
           if (videoRef.current && !videoRef.current.paused) {
             videoRef.current.pause()
           }

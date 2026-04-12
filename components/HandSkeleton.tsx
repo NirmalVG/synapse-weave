@@ -13,7 +13,6 @@ type HandLandmark = {
 }
 
 type HandLandmarks = HandLandmark[]
-const TRACKING_HOLD_MS = 160
 
 interface HandSkeletonProps {
   landmarksRef: React.MutableRefObject<HandLandmarks | null>
@@ -27,8 +26,6 @@ const dummy = new THREE.Object3D()
 export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const linesRef = useRef<THREE.LineSegments>(null)
-  const lastVisibleLandmarksRef = useRef<HandLandmarks | null>(null)
-  const lastSeenAtRef = useRef(0)
   const lineColor = useMemo(
     () => new THREE.Color(color).multiplyScalar(2.4),
     [color],
@@ -46,11 +43,8 @@ export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
   useFrame(({ viewport }) => {
     const systemEnabled = useSynapseStore.getState().systemEnabled
     const liveLandmarks = landmarksRef.current
-    const now = performance.now()
 
     if (!systemEnabled) {
-      lastVisibleLandmarksRef.current = null
-      lastSeenAtRef.current = 0
       if (meshRef.current) {
         meshRef.current.count = 0
         meshRef.current.visible = false
@@ -61,25 +55,10 @@ export function HandSkeleton({ landmarksRef, color }: HandSkeletonProps) {
       return
     }
 
-    if (liveLandmarks) {
-      lastVisibleLandmarksRef.current = liveLandmarks
-      lastSeenAtRef.current = now
-    }
-
-    const shouldHoldPreviousFrame =
-      !liveLandmarks &&
-      now - lastSeenAtRef.current <= TRACKING_HOLD_MS &&
-      lastVisibleLandmarksRef.current
-    const landmarks = liveLandmarks ?? lastVisibleLandmarksRef.current
+    const landmarks = liveLandmarks
 
     // If tracking is lost, hide the geometry
-    if (
-      !landmarks ||
-      !meshRef.current ||
-      !linesRef.current ||
-      (!liveLandmarks && !shouldHoldPreviousFrame)
-    ) {
-      lastVisibleLandmarksRef.current = null
+    if (!landmarks || !meshRef.current || !linesRef.current) {
       if (meshRef.current) {
         meshRef.current.count = 0
         meshRef.current.visible = false

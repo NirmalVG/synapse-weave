@@ -30,7 +30,6 @@ const CONNECT_THRESHOLD = 3.35
 const DISCONNECT_THRESHOLD = 3.8
 const PALM_CONNECT_THRESHOLD = 4.1
 const PALM_DISCONNECT_THRESHOLD = 4.5
-const WEB_HOLD_MS = 180
 
 const mapLandmarkToVector = (
   point: HandLandmark,
@@ -79,11 +78,6 @@ export function SynapseWeb({
   liveStateRef,
 }: SynapseWebProps) {
   const linesRef = useRef<THREE.LineSegments>(null)
-  const lastVisiblePairRef = useRef<{
-    left: HandLandmarks
-    right: HandLandmarks
-  } | null>(null)
-  const lastSeenAtRef = useRef(0)
   const webActiveRef = useRef(false)
 
   // Subscribing to UI State
@@ -111,11 +105,8 @@ export function SynapseWeb({
     const liveLeft = leftHandRef.current
     const liveRight = rightHandRef.current
     const [isRightLive, isLeftLive] = liveStateRef.current
-    const now = performance.now()
 
     if (!systemEnabled) {
-      lastVisiblePairRef.current = null
-      lastSeenAtRef.current = 0
       webActiveRef.current = false
       if (linesRef.current) {
         linesRef.current.visible = false
@@ -124,38 +115,11 @@ export function SynapseWeb({
       return
     }
 
-    if (liveLeft && liveRight && isLeftLive && isRightLive) {
-      lastVisiblePairRef.current = {
-        left: liveLeft,
-        right: liveRight,
-      }
-      lastSeenAtRef.current = now
-    }
-
-    const shouldHoldPreviousPair =
-      !isLeftLive &&
-      !isRightLive &&
-      now - lastSeenAtRef.current <= WEB_HOLD_MS &&
-      lastVisiblePairRef.current
-    const left = shouldHoldPreviousPair
-      ? lastVisiblePairRef.current?.left ?? null
-      : isLeftLive
-        ? liveLeft
-        : null
-    const right = shouldHoldPreviousPair
-      ? lastVisiblePairRef.current?.right ?? null
-      : isRightLive
-        ? liveRight
-        : null
+    const left = isLeftLive ? liveLeft : null
+    const right = isRightLive ? liveRight : null
 
     // If we don't have both hands, hide the web and exit early
-    if (
-      !left ||
-      !right ||
-      !linesRef.current ||
-      ((!isLeftLive || !isRightLive) && !shouldHoldPreviousPair)
-    ) {
-      lastVisiblePairRef.current = null
+    if (!left || !right || !linesRef.current) {
       webActiveRef.current = false
       if (linesRef.current) linesRef.current.visible = false
       return
