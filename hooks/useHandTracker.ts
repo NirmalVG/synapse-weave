@@ -185,6 +185,9 @@ const mapResultsToHands = (
 
 export function useHandTracker() {
   const [isReady, setIsReady] = useState(false)
+  const [initializationError, setInitializationError] = useState<string | null>(
+    null,
+  )
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const readyRef = useRef(false)
 
@@ -203,6 +206,7 @@ export function useHandTracker() {
   const markReady = () => {
     if (readyRef.current) return
     readyRef.current = true
+    setInitializationError(null)
     setIsReady(true)
   }
 
@@ -284,16 +288,19 @@ export function useHandTracker() {
         if (videoRef.current) {
           videoRef.current.srcObject = stream
           videoRef.current.onloadedmetadata = () => {
-            void videoRef.current!.play().then(() => {
-              // Mobile browsers can delay MediaPipe callbacks; transition UI once video is live.
-              markReady()
+            void videoRef.current!.play().catch((error: unknown) => {
+              console.error("Failed to start camera playback:", error)
+              setInitializationError(
+                "Camera playback was blocked. Allow camera access to start hand tracking.",
+              )
             })
           }
         }
       } catch (error) {
         console.error("Failed to access camera:", error)
-        // Avoid trapping mobile users behind a permanent loading overlay.
-        markReady()
+        setInitializationError(
+          "Camera access is required before hand tracking can initialize.",
+        )
         return
       }
 
@@ -459,6 +466,9 @@ export function useHandTracker() {
       })
       .catch((error) => {
         console.error("Failed to load MediaPipe Hands:", error)
+        setInitializationError(
+          "The hand-tracking model failed to load. Refresh and try again.",
+        )
       })
 
     return () => {
@@ -466,5 +476,11 @@ export function useHandTracker() {
     }
   }, [])
 
-  return { videoRef, smoothedLandmarksRef, liveHandStateRef, isReady }
+  return {
+    videoRef,
+    smoothedLandmarksRef,
+    liveHandStateRef,
+    isReady,
+    initializationError,
+  }
 }

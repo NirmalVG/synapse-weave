@@ -14,9 +14,13 @@ const LOADING_TEXTS = [
 
 interface LoadingScreenProps {
   isReady: boolean
+  errorMessage?: string | null
 }
 
-export function LoadingScreen({ isReady }: LoadingScreenProps) {
+export function LoadingScreen({
+  isReady,
+  errorMessage = null,
+}: LoadingScreenProps) {
   const [progress, setProgress] = useState(0)
   const [textIndex, setTextIndex] = useState(0)
   const [shouldRender, setShouldRender] = useState(true)
@@ -50,6 +54,7 @@ export function LoadingScreen({ isReady }: LoadingScreenProps) {
   if (!shouldRender) return null
 
   const displayProgress = isReady ? 100 : progress
+  const statusText = errorMessage ?? (isReady ? "SYSTEM ONLINE" : LOADING_TEXTS[textIndex])
 
   return (
     <div
@@ -82,8 +87,12 @@ export function LoadingScreen({ isReady }: LoadingScreenProps) {
 
         {/* Telemetry Status */}
         <div className="flex justify-between w-full font-mono text-[9px] sm:text-xs">
-          <span className="text-zinc-500 tracking-widest uppercase">
-            {isReady ? "SYSTEM ONLINE" : LOADING_TEXTS[textIndex]}
+          <span
+            className={`tracking-widest uppercase ${
+              errorMessage ? "text-amber-400" : "text-zinc-500"
+            }`}
+          >
+            {statusText}
           </span>
           <span className="text-synapse-cyan drop-shadow-[0_0_5px_rgba(0,212,255,0.8)]">
             {Math.floor(Math.min(displayProgress, 100))}%

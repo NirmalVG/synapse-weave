@@ -61,8 +61,13 @@ function LiveHandStateDistributor({
 
 export default function CanvasScene() {
   // 1. Initialize the Tracking Engine
-  const { videoRef, smoothedLandmarksRef, liveHandStateRef, isReady } =
-    useHandTracker()
+  const {
+    videoRef,
+    smoothedLandmarksRef,
+    liveHandStateRef,
+    isReady,
+    initializationError,
+  } = useHandTracker()
   const [isMobileViewport, setIsMobileViewport] = useState(false)
   const wakeLockRef = useRef<WakeLockSentinel | null>(null)
 
@@ -161,7 +166,10 @@ export default function CanvasScene() {
   return (
     <>
       {/* Cinematic Boot Sequence */}
-      <LoadingScreen isReady={isReady} />
+      <LoadingScreen
+        isReady={isReady}
+        errorMessage={initializationError}
+      />
 
       {/* Raw Webcam Feed (Hidden unless System Debug Mode is active) */}
       <video
